@@ -168,13 +168,29 @@ func NewOtelTracesToLineProtocol(config *OtelTracesToLineProtocolConfig) (*OtelT
 		customSpanDimensions: customSpanDimensions,
 		customSpanFields:     customSpanFields,
 	}
-	protocol.logger.Debug("table: %s", protocol.globalTable)
-	protocol.logger.Debug("span tags: %v", protocol.globalSpanDimensions)
-	protocol.logger.Debug("span fields: %v", protocol.globalSpanFields)
+	protocol.logger.Debug("table: " + protocol.globalTable)
+	tags := ""
+	for tag := range protocol.globalSpanDimensions {
+		tags += tag + " "
+	}
+	protocol.logger.Debug("span tags: " + tags)
+	fields := ""
+	for field := range protocol.globalSpanFields {
+		fields += field + " "
+	}
+	protocol.logger.Debug("span fields: " + fields)
 	for key, table := range protocol.customTable {
-		protocol.logger.Debug("custom table [%s]: %s", key, table)
-		protocol.logger.Debug("custom tags [%s]: %v", key, protocol.customSpanDimensions[key])
-		protocol.logger.Debug("custom fields [%s]: %v", key, protocol.customSpanFields[key])
+		protocol.logger.Debug(key + " - custom table: " + table)
+		tags := ""
+		for tag := range protocol.customSpanDimensions[key] {
+			tags += tag + " "
+		}
+		protocol.logger.Debug(key + " - custom tags: " + tags)
+		fields := ""
+		for field := range protocol.customSpanFields[key] {
+			fields += field + " "
+		}
+		protocol.logger.Debug(key + " - custom fields: " + fields)
 	}
 
 	return protocol, nil
