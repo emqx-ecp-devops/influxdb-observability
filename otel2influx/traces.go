@@ -405,6 +405,18 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 		fields[common.AttributeDroppedAttributesCount] = droppedAttributesCount
 	}
 
+	c.logger.Debug("!!! measurement: " + measurement)
+	tagsStr := ""
+	for tag := range tags {
+		tagsStr += tag + " "
+	}
+	c.logger.Debug("!!! tags: " + tagsStr)
+	fieldsStr := ""
+	for field := range fields {
+		fieldsStr += field + " "
+	}
+	c.logger.Debug("!!! field: " + fieldsStr)
+
 	if err = batch.EnqueuePoint(ctx, measurement, tags, fields, ts, common.InfluxMetricValueTypeUntyped); err != nil {
 		return fmt.Errorf("failed to enqueue point for span: %w", err)
 	}
