@@ -18,10 +18,6 @@ import (
 	"github.com/influxdata/influxdb-observability/common"
 )
 
-const (
-	CustomKeyAttribute = "emq_service"
-)
-
 type Trace struct {
 	Table string `mapstructure:"table"`
 	// SpanDimensions are span attributes to be used as line protocol tags.
@@ -51,10 +47,11 @@ type Trace struct {
 }
 
 type OtelTracesToLineProtocolConfig struct {
-	Logger       common.Logger
-	Writer       InfluxWriter
-	GlobalTrace  Trace
-	CustomTraces map[string]Trace
+	Logger         common.Logger
+	Writer         InfluxWriter
+	GlobalTrace    Trace
+	CustomKeyScope string
+	CustomTraces   map[string]Trace
 }
 
 func DefaultOtelTracesToLineProtocolConfig() *OtelTracesToLineProtocolConfig {
@@ -78,9 +75,11 @@ type OtelTracesToLineProtocol struct {
 	globalSpanDimensions map[string]struct{} //key: attribute name
 	globalSpanFields     map[string]struct{}
 
-	customTable          map[string]string
-	customSpanDimensions map[string]map[string]struct{} //outer key: custom key; inner key: attribute name
-	customSpanFields     map[string]map[string]struct{}
+	customKeyInAttributes bool
+	customKeyScope        string
+	customTable           map[string]string
+	customSpanDimensions  map[string]map[string]struct{} //outer key: custom key; inner key: attribute name
+	customSpanFields      map[string]map[string]struct{}
 }
 
 func NewOtelTracesToLineProtocol(config *OtelTracesToLineProtocolConfig) (*OtelTracesToLineProtocol, error) {
@@ -158,42 +157,33 @@ func NewOtelTracesToLineProtocol(config *OtelTracesToLineProtocolConfig) (*OtelT
 		}
 	}
 
+	customKeyScope, isAttr := extractCustomKeyScope(config.CustomKeyScope)
 	protocol := &OtelTracesToLineProtocol{
-		logger:               config.Logger,
-		influxWriter:         config.Writer,
-		globalTable:          globalTable,
-		globalSpanDimensions: globalSpanDimensions,
-		globalSpanFields:     globalSpanFields,
-		customTable:          customTable,
-		customSpanDimensions: customSpanDimensions,
-		customSpanFields:     customSpanFields,
+		logger:                config.Logger,
+		influxWriter:          config.Writer,
+		globalTable:           globalTable,
+		globalSpanDimensions:  globalSpanDimensions,
+		globalSpanFields:      globalSpanFields,
+		customKeyInAttributes: isAttr,
+		customKeyScope:        customKeyScope,
+		customTable:           customTable,
+		customSpanDimensions:  customSpanDimensions,
+		customSpanFields:      customSpanFields,
 	}
-	protocol.logger.Debug("table: " + protocol.globalTable)
-	tags := ""
-	for tag := range protocol.globalSpanDimensions {
-		tags += tag + " "
-	}
-	protocol.logger.Debug("span tags: " + tags)
-	fields := ""
-	for field := range protocol.globalSpanFields {
-		fields += field + " "
-	}
-	protocol.logger.Debug("span fields: " + fields)
-	for key, table := range protocol.customTable {
-		protocol.logger.Debug(key + " - custom table: " + table)
-		tags := ""
-		for tag := range protocol.customSpanDimensions[key] {
-			tags += tag + " "
-		}
-		protocol.logger.Debug(key + " - custom tags: " + tags)
-		fields := ""
-		for field := range protocol.customSpanFields[key] {
-			fields += field + " "
-		}
-		protocol.logger.Debug(key + " - custom fields: " + fields)
-	}
-
 	return protocol, nil
+}
+
+func extractCustomKeyScope(origScope string) (string, bool) {
+	isAttr := false
+	keyScope := ""
+	prefix := "attributes."
+	if strings.HasPrefix(origScope, prefix) {
+		isAttr = true
+		keyScope = origScope[len(prefix):]
+	} else {
+		keyScope = origScope
+	}
+	return keyScope, isAttr
 }
 
 func (c *OtelTracesToLineProtocol) WriteTraces(ctx context.Context, td ptrace.Traces) error {
@@ -248,15 +238,33 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 	spanFields := c.globalSpanFields
 
 	customKey := ""
-	for _, attributes := range []pcommon.Map{resourceAttributes, scopeAttributes, span.Attributes()} {
-		attributes.Range(func(k string, v pcommon.Value) bool {
-			if k == CustomKeyAttribute {
-				customKey = v.AsString()
-				return false
-			}
-			return true
-		})
+	if !c.customKeyInAttributes {
+		switch c.customKeyScope {
+		case "name":
+			customKey = span.Name()
+		case "kind":
+			customKey = span.Kind().String()
+		case "parent_span_id":
+			customKey = span.ParentSpanID().String()
+		case "status_code":
+			customKey = span.Status().Code().String()
+		case "context.trace_id":
+			customKey = span.TraceID().String()
+		case "context.span_id":
+			customKey = span.SpanID().String()
+		}
+	} else {
+		for _, attributes := range []pcommon.Map{resourceAttributes, scopeAttributes, span.Attributes()} {
+			attributes.Range(func(k string, v pcommon.Value) bool {
+				if k == c.customKeyScope {
+					customKey = v.AsString()
+					return false
+				}
+				return true
+			})
+		}
 	}
+
 	if len(customKey) > 0 {
 		customTable, found := c.customTable[customKey]
 		if found {
@@ -405,6 +413,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 		fields[common.AttributeDroppedAttributesCount] = droppedAttributesCount
 	}
 
+	c.logger.Debug("!!! custom key: " + customKey)
 	c.logger.Debug("!!! measurement: " + measurement)
 	tagsStr := ""
 	for tag := range tags {

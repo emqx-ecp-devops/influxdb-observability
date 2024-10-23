@@ -32,7 +32,7 @@ func TestWriteTraces(t *testing.T) {
 		},
 	}
 	protocol, _ := otel2influx.NewOtelTracesToLineProtocol(config)
-	err := protocol.WriteTraces(context.Background(), generateTraces(""))
+	err := protocol.WriteTraces(context.Background(), generateTraces("", ""))
 
 	assert.Nil(t, err)
 	point := writer.points
@@ -60,7 +60,7 @@ func TestWriteTraces(t *testing.T) {
 	assert.Equal(t, "attr1Val", attrsMap["attr1"])
 	assert.Equal(t, "attr2Val", attrsMap["attr2"])
 
-	//custom trace overrides global
+	//custom trace overrides global (custom key defined in attributes)
 	writer = new(MockInfluxWriter)
 	config = &otel2influx.OtelTracesToLineProtocolConfig{
 		Logger: new(common.NoopLogger),
@@ -71,6 +71,7 @@ func TestWriteTraces(t *testing.T) {
 				common.AttributeTraceID,
 			},
 		},
+		CustomKeyScope: "attributes.emq_service",
 		CustomTraces: map[string]otel2influx.Trace{"emqx": {
 			Table: "emqxspan",
 			SpanDimensions: []string{
@@ -82,7 +83,7 @@ func TestWriteTraces(t *testing.T) {
 		}},
 	}
 	protocol, _ = otel2influx.NewOtelTracesToLineProtocol(config)
-	err = protocol.WriteTraces(context.Background(), generateTraces("emqx"))
+	err = protocol.WriteTraces(context.Background(), generateTraces("emq_service", "emqx"))
 
 	assert.Nil(t, err)
 	point = writer.points
@@ -111,6 +112,57 @@ func TestWriteTraces(t *testing.T) {
 	assert.Equal(t, "attr2Val", attrsMap["attr2"])
 	assert.Equal(t, "emqx", attrsMap["emq_service"])
 
+	//custom trace overrides global (custom key defined as span name)
+	writer = new(MockInfluxWriter)
+	config = &otel2influx.OtelTracesToLineProtocolConfig{
+		Logger: new(common.NoopLogger),
+		Writer: writer,
+		GlobalTrace: otel2influx.Trace{
+			Table: "spantest",
+			SpanDimensions: []string{
+				common.AttributeTraceID,
+			},
+		},
+		CustomKeyScope: "name",
+		CustomTraces: map[string]otel2influx.Trace{"mockSpanName": {
+			Table: "mockspan",
+			SpanDimensions: []string{
+				"client_id",
+			},
+			SpanFields: []string{
+				"field2",
+			},
+		}},
+	}
+	protocol, _ = otel2influx.NewOtelTracesToLineProtocol(config)
+	err = protocol.WriteTraces(context.Background(), generateTraces("", ""))
+
+	assert.Nil(t, err)
+	point = writer.points
+	assert.Equal(t, 1, len(point))
+	assert.Equal(t, "mockspan", point[0].measurement)
+	assert.Equal(t, 1, len(point[0].tags))
+	assert.Equal(t, "clientMockId", point[0].tags["client_id"])
+	assert.Equal(t, 10, len(point[0].fields))
+	assert.Equal(t, pcommon.TraceID([16]byte{9, 8, 7}).String(), point[0].fields["trace_id"])
+	assert.Equal(t, pcommon.SpanID([8]byte{1, 2, 3}).String(), point[0].fields["span_id"])
+	assert.Equal(t, "mockSpanName", point[0].fields["span.name"])
+	assert.Equal(t, ptrace.SpanKindServer.String(), point[0].fields["span.kind"])
+	assert.Equal(t, pcommon.SpanID([8]byte{4, 5, 6}).String(), point[0].fields["parent_span_id"])
+	assert.Equal(t, time.Date(2024, 1, 1, 20, 0, 0, 10, time.UTC).UnixNano(), point[0].fields["end_time_unix_nano"])
+	assert.Equal(t, time.Duration(10).Nanoseconds(), point[0].fields["duration_nano"])
+	assert.Equal(t, "Ok", point[0].fields["otel.status_code"])
+	assert.Equal(t, "field2Val", point[0].fields["field2"])
+	attrsMap = map[string]string{}
+	str, ok = point[0].fields["attributes"].(string)
+	assert.True(t, ok)
+	err = json.Unmarshal([]byte(str), &attrsMap)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(attrsMap))
+	assert.Equal(t, "field1Val", attrsMap["field1"])
+	assert.Equal(t, "attr1Val", attrsMap["attr1"])
+	assert.Equal(t, "attr2Val", attrsMap["attr2"])
+
 	//custom trace not match
 	writer = new(MockInfluxWriter)
 	config = &otel2influx.OtelTracesToLineProtocolConfig{
@@ -122,6 +174,7 @@ func TestWriteTraces(t *testing.T) {
 				common.AttributeTraceID,
 			},
 		},
+		CustomKeyScope: "name",
 		CustomTraces: map[string]otel2influx.Trace{"emqx": {
 			Table: "emqxspan",
 			SpanDimensions: []string{
@@ -133,7 +186,7 @@ func TestWriteTraces(t *testing.T) {
 		}},
 	}
 	protocol, _ = otel2influx.NewOtelTracesToLineProtocol(config)
-	err = protocol.WriteTraces(context.Background(), generateTraces("ecp"))
+	err = protocol.WriteTraces(context.Background(), generateTraces("", ""))
 
 	assert.Nil(t, err)
 	point = writer.points
@@ -154,13 +207,12 @@ func TestWriteTraces(t *testing.T) {
 	assert.True(t, ok)
 	err = json.Unmarshal([]byte(str), &attrsMap)
 	assert.Nil(t, err)
-	assert.Equal(t, 6, len(attrsMap))
+	assert.Equal(t, 5, len(attrsMap))
 	assert.Equal(t, "clientMockId", attrsMap["client_id"])
 	assert.Equal(t, "field1Val", attrsMap["field1"])
 	assert.Equal(t, "field2Val", attrsMap["field2"])
 	assert.Equal(t, "attr1Val", attrsMap["attr1"])
 	assert.Equal(t, "attr2Val", attrsMap["attr2"])
-	assert.Equal(t, "ecp", attrsMap["emq_service"])
 
 	//span tags & fields duplicate
 	writer = new(MockInfluxWriter)
@@ -180,7 +232,7 @@ func TestWriteTraces(t *testing.T) {
 		},
 	}
 	protocol, _ = otel2influx.NewOtelTracesToLineProtocol(config)
-	err = protocol.WriteTraces(context.Background(), generateTraces(""))
+	err = protocol.WriteTraces(context.Background(), generateTraces("", ""))
 
 	assert.Nil(t, err)
 	point = writer.points
@@ -189,7 +241,7 @@ func TestWriteTraces(t *testing.T) {
 	assert.Equal(t, (uint64)(1), count)
 }
 
-func generateTraces(customKey string) ptrace.Traces {
+func generateTraces(customKeyAttrScope, customKey string) ptrace.Traces {
 	traces := ptrace.NewTraces()
 
 	resSpan := traces.ResourceSpans().AppendEmpty()
@@ -201,7 +253,7 @@ func generateTraces(customKey string) ptrace.Traces {
 	attrs.PutStr("attr1", "attr1Val")
 	attrs.PutStr("attr2", "attr2Val")
 	if len(customKey) > 0 {
-		attrs.PutStr("emq_service", customKey)
+		attrs.PutStr(customKeyAttrScope, customKey)
 	}
 
 	scope := resSpan.ScopeSpans().AppendEmpty()
