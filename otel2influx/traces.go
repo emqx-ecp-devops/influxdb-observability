@@ -264,7 +264,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 			})
 		}
 	}
-	c.logger.Debug("$$$ customKey assigned")
+	c.logger.Debug("$$$ customKey assigned: " + customKey)
 
 	if len(customKey) > 0 {
 		customTable, found := c.customTable[customKey]
@@ -280,7 +280,17 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 			spanFields = customFields
 		}
 	}
-	c.logger.Debug("$$$ custom table, tags, fields assigned")
+	c.logger.Debug("$$$ custom table, span dimensions, span fields assigned, measurement=" + measurement)
+	tagsStr := ""
+	for tag := range spanDimensions {
+		tagsStr += tag + " "
+	}
+	c.logger.Debug("$$$ span dimensions: " + tagsStr)
+	fieldsStr := ""
+	for field := range spanFields {
+		fieldsStr += field + " "
+	}
+	c.logger.Debug("$$$ span fields: " + fieldsStr)
 
 	droppedAttributesCount := uint64(span.DroppedAttributesCount())
 	attributesField := make(map[string]any)
@@ -345,12 +355,14 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 	if message := status.Message(); message != "" {
 		fields[semconv.OtelStatusDescription] = message
 	}
-	c.logger.Debug("$$$ span status field assigned")
+	c.logger.Debug("$$$ span status field assigned, status=" + status.Code().String())
 
 	for _, attributes := range []pcommon.Map{resourceAttributes, scopeAttributes, span.Attributes()} {
 		attributes.Range(func(k string, v pcommon.Value) bool {
+			c.logger.Debug("$$$ (k,v)=(" + k + "," + v.AsString() + ")")
 			asAttr := true
 			if _, found := spanDimensions[k]; found {
+				c.logger.Debug("$$$ attr in span dimensions: " + k)
 				if _, found = tags[k]; found {
 					c.logger.Debug("attribute %s already exists as a tag", k)
 					attributesField[k] = v.AsRaw()
@@ -359,6 +371,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 				asAttr = false
 			}
 			if _, found := spanFields[k]; found {
+				c.logger.Debug("$$$ attr in span fields: " + k)
 				if _, found = fields[k]; found {
 					c.logger.Debug("attribute %s already exists as a field", k)
 					attributesField[k] = v.AsRaw()
@@ -423,12 +436,12 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 
 	c.logger.Debug("!!! custom key: " + customKey)
 	c.logger.Debug("!!! measurement: " + measurement)
-	tagsStr := ""
+	tagsStr = ""
 	for tag := range tags {
 		tagsStr += tag + " "
 	}
 	c.logger.Debug("!!! tags: " + tagsStr)
-	fieldsStr := ""
+	fieldsStr = ""
 	for field := range fields {
 		fieldsStr += field + " "
 	}
