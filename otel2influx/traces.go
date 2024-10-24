@@ -264,6 +264,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 			})
 		}
 	}
+	c.logger.Debug("$$$ customKey assigned")
 
 	if len(customKey) > 0 {
 		customTable, found := c.customTable[customKey]
@@ -279,6 +280,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 			spanFields = customFields
 		}
 	}
+	c.logger.Debug("$$$ custom table, tags, fields assigned")
 
 	droppedAttributesCount := uint64(span.DroppedAttributesCount())
 	attributesField := make(map[string]any)
@@ -330,6 +332,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 		fields[common.AttributeEndTimeUnixNano] = endTime.UnixNano()
 		fields[common.AttributeDurationNano] = endTime.Sub(ts).Nanoseconds()
 	}
+	c.logger.Debug("$$$ fields, tags assigned")
 
 	status := span.Status()
 	switch status.Code() {
@@ -342,6 +345,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 	if message := status.Message(); message != "" {
 		fields[semconv.OtelStatusDescription] = message
 	}
+	c.logger.Debug("$$$ span status field assigned")
 
 	for _, attributes := range []pcommon.Map{resourceAttributes, scopeAttributes, span.Attributes()} {
 		attributes.Range(func(k string, v pcommon.Value) bool {
@@ -368,6 +372,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 			return true
 		})
 	}
+	c.logger.Debug("$$$ attributes handled")
 	if len(attributesField) > 0 {
 		marshalledAttributes, err := json.Marshal(attributesField)
 		if err != nil {
@@ -389,6 +394,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 	if droppedEventsCount > 0 {
 		fields[common.AttributeDroppedEventsCount] = droppedEventsCount
 	}
+	c.logger.Debug("$$$ span events handled")
 
 	droppedLinksCount := uint64(span.DroppedLinksCount())
 	linkMeasurement := measurement + "_links"
@@ -401,6 +407,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 	if droppedLinksCount > 0 {
 		fields[common.AttributeDroppedLinksCount] = droppedLinksCount
 	}
+	c.logger.Debug("$$$ span links handled")
 
 	for k := range tags {
 		if _, found := fields[k]; found {
@@ -412,6 +419,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 	if droppedAttributesCount > 0 {
 		fields[common.AttributeDroppedAttributesCount] = droppedAttributesCount
 	}
+	c.logger.Debug("$$$ tag/field duplication handled")
 
 	c.logger.Debug("!!! custom key: " + customKey)
 	c.logger.Debug("!!! measurement: " + measurement)
