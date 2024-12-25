@@ -1,4 +1,4 @@
-module github.com/influxdata/influxdb-observability/otel2influx
+module github.com/emqx-ecp-devops/influxdb-observability/otel2influx
 
 go 1.21.0
 
@@ -30,4 +30,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/influxdata/influxdb-observability/common => ../common
+replace github.com/emqx-ecp-devops/influxdb-observability/common => ../common
