@@ -296,39 +296,39 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 	attributesField := make(map[string]any)
 
 	if _, found := spanDimensions[common.AttributeTraceID]; found {
-		tags[fmt.Sprintf("`%s`", common.AttributeTraceID)] = traceID.String()
+		tags[common.AttributeTraceID] = traceID.String()
 	} else {
-		fields[fmt.Sprintf("`%s`", common.AttributeTraceID)] = traceID.String()
+		fields[common.AttributeTraceID] = traceID.String()
 	}
 
 	if _, found := spanDimensions[common.AttributeSpanID]; found {
-		tags[fmt.Sprintf("`%s`", common.AttributeSpanID)] = spanID.String()
+		tags[common.AttributeSpanID] = spanID.String()
 	} else {
-		fields[fmt.Sprintf("`%s`", common.AttributeSpanID)] = spanID.String()
+		fields[common.AttributeSpanID] = spanID.String()
 	}
 
 	if traceState := span.TraceState().AsRaw(); traceState != "" {
-		fields[fmt.Sprintf("`%s`", common.AttributeTraceState)] = traceState
+		fields[common.AttributeTraceState] = traceState
 	}
 	if parentSpanID := span.ParentSpanID(); !parentSpanID.IsEmpty() {
 		if _, found := spanDimensions[common.AttributeParentSpanID]; found {
-			tags[fmt.Sprintf("`%s`", common.AttributeParentSpanID)] = parentSpanID.String()
+			tags[common.AttributeParentSpanID] = parentSpanID.String()
 		} else {
-			fields[fmt.Sprintf("`%s`", common.AttributeParentSpanID)] = parentSpanID.String()
+			fields[common.AttributeParentSpanID] = parentSpanID.String()
 		}
 	}
 	if name := span.Name(); name != "" {
 		if _, found := spanDimensions[common.AttributeSpanName]; found {
-			tags[fmt.Sprintf("`%s`", common.AttributeSpanName)] = name
+			tags[normalizeKey(common.AttributeSpanName)] = name
 		} else {
-			fields[fmt.Sprintf("`%s`", common.AttributeSpanName)] = name
+			fields[normalizeKey(common.AttributeSpanName)] = name
 		}
 	}
 	if kind := span.Kind(); kind != ptrace.SpanKindUnspecified {
 		if _, found := spanDimensions[common.AttributeSpanKind]; found {
-			tags[fmt.Sprintf("`%s`", common.AttributeSpanKind)] = kind.String()
+			tags[normalizeKey(common.AttributeSpanKind)] = kind.String()
 		} else {
-			fields[fmt.Sprintf("`%s`", common.AttributeSpanKind)] = kind.String()
+			fields[normalizeKey(common.AttributeSpanKind)] = kind.String()
 		}
 	}
 
@@ -339,40 +339,40 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 	}
 
 	if endTime := span.EndTimestamp().AsTime(); !endTime.IsZero() {
-		fields[fmt.Sprintf("`%s`", common.AttributeEndTimeUnixNano)] = endTime.UnixNano()
-		fields[fmt.Sprintf("`%s`", common.AttributeDurationNano)] = endTime.Sub(ts).Nanoseconds()
+		fields[common.AttributeEndTimeUnixNano] = endTime.UnixNano()
+		fields[common.AttributeDurationNano] = endTime.Sub(ts).Nanoseconds()
 	}
 
 	status := span.Status()
 	switch status.Code() {
 	case ptrace.StatusCodeUnset:
 	case ptrace.StatusCodeOk, ptrace.StatusCodeError:
-		fields[fmt.Sprintf("`%s`", semconv.OtelStatusCode)] = status.Code().String()
+		fields[normalizeKey(semconv.OtelStatusCode)] = status.Code().String()
 	default:
 		c.logger.Debug(fmt.Sprintf("status code [%v] not recognized", status.Code()))
 	}
 	if message := status.Message(); message != "" {
-		fields[fmt.Sprintf("`%s`", semconv.OtelStatusDescription)] = message
+		fields[normalizeKey(semconv.OtelStatusDescription)] = message
 	}
 
 	for _, attributes := range []pcommon.Map{resourceAttributes, scopeAttributes, span.Attributes()} {
 		attributes.Range(func(k string, v pcommon.Value) bool {
 			asAttr := true
 			if _, found := spanDimensions[k]; found {
-				if _, found = tags[fmt.Sprintf("`%s`", k)]; found {
+				if _, found = tags[normalizeKey(k)]; found {
 					c.logger.Debug(fmt.Sprintf("attribute (key=%s) already exists as a tag", k))
 					attributesField[k] = v.AsRaw()
 				} else {
-					tags[fmt.Sprintf("`%s`", k)] = v.AsString()
+					tags[normalizeKey(k)] = v.AsString()
 				}
 				asAttr = false
 			}
 			if _, found := spanFields[k]; found {
-				if _, found = fields[fmt.Sprintf("`%s`", k)]; found {
+				if _, found = fields[normalizeKey(k)]; found {
 					c.logger.Debug(fmt.Sprintf("attribute (key=%s) already exists as a field", k))
 					attributesField[k] = v.AsRaw()
 				} else {
-					fields[fmt.Sprintf("`%s`", k)] = v.AsString()
+					fields[normalizeKey(k)] = v.AsString()
 				}
 				asAttr = false
 			}
@@ -388,7 +388,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 			c.logger.Debug(fmt.Sprintf("failed to marshal attributes to JSON. err = %v", err))
 			droppedAttributesCount += uint64(span.Attributes().Len())
 		} else {
-			fields[fmt.Sprintf("`%s`", common.AttributeAttributes)] = string(marshalledAttributes)
+			fields[common.AttributeAttributes] = string(marshalledAttributes)
 		}
 	}
 
@@ -401,7 +401,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 		}
 	}
 	if droppedEventsCount > 0 {
-		fields[fmt.Sprintf("`%s`", common.AttributeDroppedEventsCount)] = droppedEventsCount
+		fields[common.AttributeDroppedEventsCount] = droppedEventsCount
 	}
 
 	droppedLinksCount := uint64(span.DroppedLinksCount())
@@ -413,18 +413,18 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 		}
 	}
 	if droppedLinksCount > 0 {
-		fields[fmt.Sprintf("`%s`", common.AttributeDroppedLinksCount)] = droppedLinksCount
+		fields[common.AttributeDroppedLinksCount] = droppedLinksCount
 	}
 
 	for k := range tags {
-		if _, found := fields[fmt.Sprintf("`%s`", k)]; found {
+		if _, found := fields[normalizeKey(k)]; found {
 			c.logger.Debug(fmt.Sprintf("tag and field keys (key=%s) conflict; field will be dropped", k))
 			droppedAttributesCount++
-			delete(fields, fmt.Sprintf("`%s`", k))
+			delete(fields, normalizeKey(k))
 		}
 	}
 	if droppedAttributesCount > 0 {
-		fields[fmt.Sprintf("`%s`", common.AttributeDroppedAttributesCount)] = droppedAttributesCount
+		fields[common.AttributeDroppedAttributesCount] = droppedAttributesCount
 	}
 	tagsStr = ""
 	for tag := range tags {
@@ -447,7 +447,7 @@ func (c *OtelTracesToLineProtocol) enqueueSpan(ctx context.Context, span ptrace.
 func (c *OtelTracesToLineProtocol) enqueueSpanEvent(ctx context.Context, measurement string, traceID pcommon.TraceID, spanID pcommon.SpanID, spanEvent ptrace.SpanEvent, batch InfluxWriterBatch) error {
 	fields := make(map[string]interface{}, 2)
 	if name := spanEvent.Name(); name != "" {
-		fields[fmt.Sprintf("`%s`", semconv.AttributeEventName)] = name
+		fields[normalizeKey(semconv.AttributeEventName)] = name
 	}
 
 	if spanEvent.Attributes().Len() > 0 {
@@ -457,16 +457,16 @@ func (c *OtelTracesToLineProtocol) enqueueSpanEvent(ctx context.Context, measure
 			c.logger.Debug(fmt.Sprintf("failed to marshal attributes to JSON. err = %v", err))
 			droppedAttributesCount += uint64(spanEvent.Attributes().Len())
 		} else {
-			fields[fmt.Sprintf("`%s`", common.AttributeAttributes)] = string(marshalledAttributes)
+			fields[common.AttributeAttributes] = string(marshalledAttributes)
 		}
 		if droppedAttributesCount > 0 {
-			fields[fmt.Sprintf("`%s`", common.AttributeDroppedAttributesCount)] = droppedAttributesCount
+			fields[common.AttributeDroppedAttributesCount] = droppedAttributesCount
 		}
 	}
 
 	tags := map[string]string{
-		fmt.Sprintf("`%s`", common.AttributeTraceID): traceID.String(),
-		fmt.Sprintf("`%s`", common.AttributeSpanID):  spanID.String(),
+		common.AttributeTraceID: traceID.String(),
+		common.AttributeSpanID:  spanID.String(),
 	}
 
 	err := batch.EnqueuePoint(ctx, measurement, tags, fields, spanEvent.Timestamp().AsTime(), common.InfluxMetricValueTypeUntyped)
@@ -489,14 +489,14 @@ func (c *OtelTracesToLineProtocol) writeSpanLink(ctx context.Context, measuremen
 	}
 
 	tags := map[string]string{
-		fmt.Sprintf("`%s`", common.AttributeTraceID):       traceID.String(),
-		fmt.Sprintf("`%s`", common.AttributeSpanID):        spanID.String(),
-		fmt.Sprintf("`%s`", common.AttributeLinkedTraceID): linkedTraceID.String(),
-		fmt.Sprintf("`%s`", common.AttributeLinkedSpanID):  linkedSpanID.String(),
+		common.AttributeTraceID:       traceID.String(),
+		common.AttributeSpanID:        spanID.String(),
+		common.AttributeLinkedTraceID: linkedTraceID.String(),
+		common.AttributeLinkedSpanID:  linkedSpanID.String(),
 	}
 
 	if traceState := spanLink.TraceState().AsRaw(); traceState != "" {
-		fields[fmt.Sprintf("`%s`", common.AttributeTraceState)] = traceState
+		fields[common.AttributeTraceState] = traceState
 	}
 
 	if spanLink.Attributes().Len() > 0 {
@@ -506,10 +506,10 @@ func (c *OtelTracesToLineProtocol) writeSpanLink(ctx context.Context, measuremen
 			c.logger.Debug(fmt.Sprintf("failed to marshal attributes to JSON. err = %v", err))
 			droppedAttributesCount += uint64(spanLink.Attributes().Len())
 		} else {
-			fields[fmt.Sprintf("`%s`", common.AttributeAttributes)] = string(marshalledAttributes)
+			fields[common.AttributeAttributes] = string(marshalledAttributes)
 		}
 		if droppedAttributesCount > 0 {
-			fields[fmt.Sprintf("`%s`", common.AttributeDroppedAttributesCount)] = droppedAttributesCount
+			fields[common.AttributeDroppedAttributesCount] = droppedAttributesCount
 		}
 	}
 
@@ -517,4 +517,8 @@ func (c *OtelTracesToLineProtocol) writeSpanLink(ctx context.Context, measuremen
 		return fmt.Errorf("failed to write point for span link: %w", err)
 	}
 	return nil
+}
+
+func normalizeKey(key string) string {
+	return strings.ReplaceAll(key, ".", "_")
 }
